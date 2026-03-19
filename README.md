@@ -1,6 +1,6 @@
 # Time Capsule Persona Site
 
-一个基于 Next.js App Router 的时间胶囊网站。用户可以填写人格问卷、记录人生事件、上传头像、和“那个时间点的自己”聊天，并导出人格提示词与记忆档案。
+一个基于 Next.js App Router 的时间胶囊网站。用户可以填写人格问卷、记录人生事件、上传头像、和“那个时间点的自己”聊天，并导出这个阶段的人格提示词与记忆档案。
 
 ## 技术栈
 
@@ -22,6 +22,12 @@
 
 ```bash
 pnpm install
+```
+
+复制环境变量模板：
+
+```bash
+cp .env.example .env.local
 ```
 
 启动开发环境：
@@ -47,22 +53,27 @@ pnpm build
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env.local`，再填写真实值：
+当前项目不再依赖 Coze SDK。聊天由一个轻量 `/api/chat` 路由转发到底层模型接口，并通过环境变量切换 provider。
 
-```bash
-cp .env.example .env.local
-```
+必须配置：
 
-当前项目使用到的环境变量：
+- `LLM_PROVIDER`
+  可选值：`deepseek`、`minimax`
 
-- `COZE_WORKLOAD_IDENTITY_API_KEY`
-- `COZE_INTEGRATION_BASE_URL`
-- `COZE_INTEGRATION_MODEL_BASE_URL`
+按 provider 配置：
+
+- `DEEPSEEK_API_KEY`
+- `DEEPSEEK_BASE_URL`
+- `DEEPSEEK_MODEL`
+- `MINIMAX_API_KEY`
+- `MINIMAX_BASE_URL`
+- `MINIMAX_MODEL`
 
 说明：
 
-- 页面本身可以在缺少这些变量时完成构建和部署。
-- 但依赖 Coze SDK 的 API routes 在运行时会返回清晰错误，提示缺少哪些变量。
+- 只有当前启用的 provider 会在运行时校验对应变量。
+- 构建阶段不会因为未启用 provider 的变量缺失而失败。
+- 推荐把 `*_BASE_URL` 配成兼容 OpenAI Chat Completions 的接口根地址；如果你填的是完整 `/chat/completions` 地址，项目也能直接使用。
 
 ## GitHub 提交前注意事项
 
@@ -78,7 +89,7 @@ cp .env.example .env.local
 - `.env*` 真实环境文件
 - 本地上传测试文件、缓存目录、日志文件
 
-建议在提交前执行：
+建议提交前执行：
 
 ```bash
 pnpm lint
@@ -93,12 +104,11 @@ pnpm build
 3. 选择对应的 GitHub Repository。
 4. Vercel 会自动识别为 Next.js 项目。
 5. 在 `Environment Variables` 中添加：
-   - `COZE_WORKLOAD_IDENTITY_API_KEY`
-   - `COZE_INTEGRATION_BASE_URL`
-   - `COZE_INTEGRATION_MODEL_BASE_URL`
+   - `LLM_PROVIDER`
+   - 当前启用 provider 的 `API_KEY` / `BASE_URL` / `MODEL`
 6. 点击 `Deploy`。
 
-后续每次 push 到默认分支，Vercel 会自动重新部署。
+之后每次 push 到默认分支，Vercel 会自动重新部署。
 
 ## 常见报错排查
 
@@ -111,13 +121,14 @@ corepack enable
 corepack pnpm --version
 ```
 
-### 2. `Missing required Coze environment variables`
+### 2. `Missing required LLM environment variables`
 
-说明 Vercel 或本地 `.env.local` 没有配置完整。检查并补齐：
+说明当前启用的 provider 配置不完整。检查：
 
-- `COZE_WORKLOAD_IDENTITY_API_KEY`
-- `COZE_INTEGRATION_BASE_URL`
-- `COZE_INTEGRATION_MODEL_BASE_URL`
+- `LLM_PROVIDER`
+- 当前 provider 对应的 `API_KEY`
+- 当前 provider 对应的 `BASE_URL`
+- 当前 provider 对应的 `MODEL`
 
 ### 3. `npm install` 被拒绝
 
@@ -127,11 +138,19 @@ corepack pnpm --version
 pnpm install
 ```
 
-### 4. Vercel 构建成功但聊天接口报错
+### 4. 聊天接口返回 4xx / 5xx
 
-通常是环境变量未配置，或者 Coze 侧服务不可用。先检查 Vercel 项目里的 Environment Variables，再检查外部服务状态。
+通常是以下原因之一：
+
+- 模型商的 Key 无效
+- `BASE_URL` 不是兼容的聊天接口根地址
+- `MODEL` 名称填错
+- provider 返回的错误被 `/api/chat` 原样透传
+
+先检查 Vercel 的环境变量，再检查对应模型平台的控制台和接口文档。
 
 ## 后续扩展建议
 
-- 头像、音频、未来的大文件能力不要直接放仓库或长期依赖 `base64`。
-- 如果后续加入头像生成、语音克隆、音频上传，建议迁移到对象存储，例如 S3、R2 或 Supabase Storage。
+- 头像原图、音频、未来的声音克隆不要长期放在 localStorage 或仓库里。
+- 如果后续加入头像生成、语音克隆、音频上传，建议接对象存储，例如 S3、R2 或 Supabase Storage。
+- 如果后续要接第三个模型商，优先在 `src/lib` 的 provider 层扩展，不要把新逻辑散落到页面和 API route 里。

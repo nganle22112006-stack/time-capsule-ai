@@ -8,7 +8,7 @@
     "preinstall": "npx only-allow pnpm",
     "lint": "eslint",
     "start": "next start",
-    "test": "node --test tests/coze-env.test.mjs tests/time-capsule-export.test.mjs",
+    "test": "node --test tests/llm-env.test.mjs tests/persona-prompt.test.mjs tests/time-capsule-export.test.mjs",
     "ts-check": "tsc -p tsconfig.json"
   },
   "dependencies": {
@@ -45,7 +45,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "coze-coding-dev-sdk": "^0.7.17",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",

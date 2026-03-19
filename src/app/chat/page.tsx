@@ -199,14 +199,6 @@ export default function ChatPage() {
 
       setSystemPrompt(promptData.systemPrompt);
 
-      if (nextLifeEvents.length > 0) {
-        await fetch('/api/import-knowledge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lifeEvents: nextLifeEvents }),
-        });
-      }
-
       saveAgentCache(promptData.systemPrompt, nextLifeEvents, normalizedQuestionnaire);
       setMessages([toAssistantMessage(buildWelcomeMessage(normalizedQuestionnaire))]);
       setLoading(false);
@@ -258,7 +250,15 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
-        throw new Error('网络请求失败');
+        let errorMessage = '网络请求失败';
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const payload = (await response.json()) as { error?: string };
+          errorMessage = payload.error || errorMessage;
+        } else {
+          errorMessage = (await response.text()) || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();

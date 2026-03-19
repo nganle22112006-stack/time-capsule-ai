@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DataSourceType, HeaderUtils, KnowledgeClient } from 'coze-coding-dev-sdk';
-import { createCozeRuntimeConfig, formatMissingCozeEnvMessage } from '@/lib/coze-env';
 import { normalizeLifeEvents, normalizeQuestionnaireData } from '@/lib/time-capsule';
 
 interface ImportRequest {
@@ -32,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: '缺少必要的数据，请确保上传了正确的文件',
+          error: '缺少必要的数据，请确认上传了正确的文件',
         },
         { status: 400 }
       );
@@ -48,57 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cozeConfig = createCozeRuntimeConfig();
-    if (!cozeConfig.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: formatMissingCozeEnvMessage(cozeConfig.missing),
-          missingEnvVars: cozeConfig.missing,
-        },
-        { status: 503 }
-      );
-    }
-
     const events = normalizeLifeEvents(knowledgeBase.documents);
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = cozeConfig.config;
-
-    let importResult: {
-      success: boolean;
-      count?: number;
-      docIds?: string[];
-      error?: string;
-    } | null = null;
-
-    if (events.length > 0) {
-      try {
-        const client = new KnowledgeClient(config, customHeaders);
-        const documents = events.map((event) => ({
-          source: DataSourceType.TEXT,
-          raw_data: `## ${event.title}\n\n日期：${event.date}\n\n情绪标签：${event.mood || '未标注'}\n\n详细描述：\n${event.description}`,
-        }));
-
-        const response = await client.addDocuments(documents, 'time_capsule_knowledge', {
-          separator: '\n\n',
-          max_tokens: 1000,
-          remove_extra_spaces: true,
-        });
-
-        importResult = {
-          success: response.code === 0,
-          count: response.doc_ids?.length || 0,
-          docIds: response.doc_ids,
-        };
-      } catch (error) {
-        console.error('知识库导入失败:', error);
-        importResult = {
-          success: false,
-          error: '知识库导入失败',
-        };
-      }
-    }
-
     const fallbackQuestionnaire = knowledgeBase.metadata?.questionnaireSummary || {};
     const questionnaireData = normalizeQuestionnaireData(
       knowledgeBase.metadata?.questionnaireData || {
@@ -113,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: '智能体导入成功',
+      message: '阶段档案导入成功',
       data: {
         systemPrompt,
         lifeEvents: events,
@@ -125,16 +73,20 @@ export async function POST(request: NextRequest) {
           zodiac: questionnaireData.zodiac,
           currentMood: questionnaireData.currentMood,
         },
-        knowledgeImport: importResult,
+        knowledgeImport: {
+          success: true,
+          count: events.length,
+          mode: 'local-only',
+        },
         importedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
-    console.error('导入智能体失败:', error);
+    console.error('Import agent failed:', error);
     return NextResponse.json(
       {
         success: false,
-        error: '导入智能体时发生错误，请检查文件格式是否正确',
+        error: '导入阶段档案时发生错误，请检查文件格式是否正确',
       },
       { status: 500 }
     );
