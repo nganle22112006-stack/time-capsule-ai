@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { normalizeLifeEvents, normalizeQuestionnaireData } from '@/lib/time-capsule';
 
 interface ImportRequest {

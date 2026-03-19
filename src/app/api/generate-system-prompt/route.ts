@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { buildPersonaSystemPrompt } from '@/lib/persona-prompt';
 
 export async function POST(request: NextRequest) {

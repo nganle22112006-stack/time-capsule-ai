@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, Sparkles } from 'lucide-react';
@@ -51,12 +51,12 @@ const hasQuestionnaireSignal = (questionnaire: QuestionnaireData) =>
   );
 
 const buildWelcomeMessage = (questionnaire: QuestionnaireData) => {
-  const version = questionnaire.versionName || '那个阶段的我';
+  const version = questionnaire.versionName || '那个时间点的我';
   const name = questionnaire.nickname || questionnaire.name || '你';
   const mood = questionnaire.currentMood || '还在摸索答案';
   const trouble = questionnaire.currentTroubles || '不确定感';
 
-  return `我是${version}。你现在来找我，像是把当时的自己从时间里轻轻叫醒。${name}，那时候的我处在“${mood}”，一直在和“${trouble}”较劲。你想从哪里聊起？`;
+  return `你好，我一直在这里。我是${version}。你现在来找我，像是把当时的自己从时间里轻轻叫醒。${name}，那时候的我处在“${mood}”，一直在和“${trouble}”较劲。你想从哪里聊起？`;
 };
 
 const parseStorageJson = <T,>(value: string | null): T | null => {
@@ -233,7 +233,7 @@ export default function ChatPage() {
         ...prev,
         {
           role: 'assistant',
-          content: '那个时候的你正在组织语言…',
+          content: '我正在慢慢整理想对你说的话…',
           transient: true,
         },
       ]);
@@ -531,7 +531,7 @@ export default function ChatPage() {
                     void handleSend();
                   }
                 }}
-                placeholder="对那个时间点的自己说点什么..."
+                placeholder="想对那个时间点的我说点什么..."
                 className="min-h-[62px] flex-1 resize-none border-purple-400/30 bg-white/5 text-white placeholder:text-purple-200/45"
                 disabled={isStreaming || initializing}
               />
@@ -543,7 +543,7 @@ export default function ChatPage() {
                 {isStreaming ? <Loader2 className="h-5 w-5 animate-spin" /> : '发送'}
               </Button>
             </div>
-            {isStreaming && <p className="mt-2 text-xs text-purple-200/70">那个时候的你正在组织语言...</p>}
+            {isStreaming && <p className="mt-2 text-xs text-purple-200/70">我正在慢慢整理想对你说的话…</p>}
           </div>
         </Card>
       </div>

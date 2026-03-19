@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLlmRuntimeConfig, formatMissingLlmEnvMessage } from '@/lib/llm-env';
-import { streamChatCompletion } from '@/lib/llm-provider';
+import { LlmProviderError, requestChatCompletion } from '@/lib/llm-provider';
 import { buildChatSystemPrompt } from '@/lib/persona-prompt';
 
 interface ChatMessage {
@@ -21,24 +21,26 @@ export async function POST(request: NextRequest) {
     const { messages, systemPrompt, lifeEvents, questionnaireData } = body;
 
     if (!messages || messages.length === 0) {
-      return new Response('缺少消息内容', { status: 400 });
+      return NextResponse.json({ error: 'missing messages' }, { status: 400 });
     }
 
     if (!systemPrompt?.trim()) {
-      return new Response('缺少 System Prompt', { status: 400 });
+      return NextResponse.json({ error: 'missing system prompt' }, { status: 400 });
     }
 
     const llmConfig = createLlmRuntimeConfig();
     if (!llmConfig.ok) {
       return NextResponse.json(
         {
-          success: false,
           error: formatMissingLlmEnvMessage(llmConfig.missing),
           missingEnvVars: llmConfig.missing,
         },
         { status: 503 }
       );
     }
+
+    const { provider } = llmConfig.config;
+    console.log(`[chat] provider=${provider} messageCount=${messages.length}`);
 
     const llmMessages = [
       {
@@ -52,34 +54,46 @@ export async function POST(request: NextRequest) {
       ...messages,
     ];
 
-    const headers = new Headers({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'Transfer-Encoding': 'chunked',
-    });
+    const result = await requestChatCompletion(llmConfig.config, llmMessages, { temperature: 0.78 });
+    const reply = result.reply?.trim() || '';
 
-    const encoder = new TextEncoder();
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of streamChatCompletion(llmConfig.config, llmMessages, { temperature: 0.78 })) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
-          }
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        } catch (error) {
-          console.error('Streaming chat response failed:', error);
-          const message = error instanceof Error ? error.message : '生成响应时发生错误';
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
-        } finally {
-          controller.close();
-        }
-      },
-    });
+    console.log(`[chat] provider=${provider} requestSuccess=true replyLength=${reply.length}`);
 
-    return new Response(readableStream, { headers });
+    if (!reply) {
+      console.error('[chat] empty model reply', {
+        provider,
+        messageCount: messages.length,
+        raw: result.raw,
+      });
+      return NextResponse.json({ error: 'empty model reply' }, { status: 502 });
+    }
+
+    return NextResponse.json({
+      reply,
+      provider,
+    });
   } catch (error) {
-    console.error('Chat API error:', error);
-    return new Response('处理请求时发生错误', { status: 500 });
+    if (error instanceof LlmProviderError) {
+      console.error('[chat] provider request failed', {
+        status: error.status,
+        message: error.message,
+        details: error.details,
+        stack: error.stack,
+      });
+      return NextResponse.json(
+        {
+          error: error.message,
+        },
+        { status: error.status || 502 }
+      );
+    }
+
+    console.error('[chat] unexpected error', error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'unexpected chat api error',
+      },
+      { status: 500 }
+    );
   }
 }

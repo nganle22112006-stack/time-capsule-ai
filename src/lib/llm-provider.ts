@@ -5,6 +5,23 @@ export interface ChatCompletionMessage {
   content: string;
 }
 
+export interface ChatCompletionResult {
+  reply: string;
+  raw: unknown;
+}
+
+export class LlmProviderError extends Error {
+  status: number;
+  details?: string;
+
+  constructor(message: string, status = 500, details?: string) {
+    super(message);
+    this.name = 'LlmProviderError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const resolveChatEndpoint = (baseUrl: string) => {
   const normalized = baseUrl.replace(/\/+$/, '');
   if (normalized.endsWith('/chat/completions')) {
@@ -13,57 +30,57 @@ const resolveChatEndpoint = (baseUrl: string) => {
   return `${normalized}/chat/completions`;
 };
 
-const extractContentDelta = (payload: unknown) => {
-  if (!payload || typeof payload !== 'object') return '';
-  const record = payload as {
-    choices?: Array<{
-      delta?: { content?: string | null };
-      message?: { content?: string | null };
-      text?: string | null;
-    }>;
-  };
-  const choice = record.choices?.[0];
-  if (!choice) return '';
-  return choice.delta?.content || choice.message?.content || choice.text || '';
+const toText = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
 };
 
-async function* streamSseResponse(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() || '';
-
-    for (const frame of frames) {
-      const lines = frame
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.startsWith('data:'));
-
-      for (const line of lines) {
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
-        const parsed = JSON.parse(data) as unknown;
-        const content = extractContentDelta(parsed);
-        if (content) {
-          yield content;
-        }
-      }
-    }
+const stringifyUnknown = (value: unknown) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
+};
+
+const normalizeContentArray = (content: unknown[]): string =>
+  content
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (!item || typeof item !== 'object') return '';
+      const record = item as Record<string, unknown>;
+      return toText(record.text) || toText(record.content) || '';
+    })
+    .join('');
+
+export function extractText(response: any): string {
+  if (!response) return '';
+  if (typeof response === 'string') return response;
+
+  if (typeof response.output_text === 'string') return response.output_text;
+  if (Array.isArray(response.output_text)) return normalizeContentArray(response.output_text);
+
+  const content = response?.choices?.[0]?.message?.content;
+
+  if (typeof content === 'string') return content;
+
+  if (Array.isArray(content)) {
+    return content.map((item) => toText(item?.text) || toText(item?.content) || '').join('');
+  }
+
+  if (response?.choices?.[0]?.text) return toText(response.choices[0].text);
+
+  return '';
 }
 
-export async function* streamChatCompletion(
+export const extractReplyText = extractText;
+
+export async function requestChatCompletion(
   config: LlmRuntimeConfig,
   messages: ChatCompletionMessage[],
   options: { temperature?: number } = {}
-) {
+): Promise<ChatCompletionResult> {
   const response = await fetch(resolveChatEndpoint(config.baseUrl), {
     method: 'POST',
     headers: {
@@ -73,32 +90,44 @@ export async function* streamChatCompletion(
     body: JSON.stringify({
       model: config.model,
       messages,
-      stream: true,
+      stream: false,
       temperature: options.temperature ?? 0.75,
     }),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `LLM request failed with status ${response.status}`);
-  }
-
   const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('text/event-stream')) {
-    const body = response.body;
-    if (!body) {
-      throw new Error('LLM response did not include a response body.');
-    }
+  const isJson = contentType.includes('application/json');
 
-    for await (const chunk of streamSseResponse(body)) {
-      yield chunk;
+  let rawResponse: unknown = null;
+  if (isJson) {
+    try {
+      rawResponse = await response.json();
+    } catch (error) {
+      throw new LlmProviderError(
+        `failed to parse model JSON response: ${error instanceof Error ? error.message : String(error)}`,
+        502
+      );
     }
-    return;
+  } else {
+    rawResponse = await response.text();
   }
 
-  const payload = (await response.json()) as unknown;
-  const content = extractContentDelta(payload);
-  if (content) {
-    yield content;
+  if (!response.ok) {
+    const details = typeof rawResponse === 'string' ? rawResponse : stringifyUnknown(rawResponse);
+    const message = `model request failed (${response.status}): ${details || 'unknown provider error'}`;
+    throw new LlmProviderError(message, response.status, details);
   }
+
+  console.log('LLM RAW RESPONSE:', JSON.stringify(rawResponse, null, 2));
+  const reply = extractText(rawResponse).trim();
+  console.log('PARSED REPLY:', reply);
+
+  if (!reply) {
+    throw new LlmProviderError('empty model reply', 502, stringifyUnknown(rawResponse));
+  }
+
+  return {
+    reply,
+    raw: rawResponse,
+  };
 }

@@ -1,4 +1,4 @@
-export interface QuestionnaireData {
+﻿export interface QuestionnaireData {
   // Legacy fields (kept for compatibility)
   name: string;
   worldView: string;

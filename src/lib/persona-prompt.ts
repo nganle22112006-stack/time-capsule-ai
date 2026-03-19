@@ -1,4 +1,4 @@
-import { normalizeLifeEvents, normalizeQuestionnaireData } from './time-capsule.ts';
+﻿import { normalizeLifeEvents, normalizeQuestionnaireData } from './time-capsule.ts';
 
 const line = (label: string, value: string) => `- ${label}: ${value || '未填写'}`;
 
